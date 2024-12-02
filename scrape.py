@@ -1,27 +1,14 @@
 #%%
 # Scraper for Swiss Army Service Information
 
-"""
-TODO:
-
-1) scrape date & date format:
-- add scrape date to df OR when importing in SQL
-- change date format to YYYY-MM-DD
-
-2) language column:
-language = re.search(r"https:\/\/www\.armee\.ch\/(\w{2})/", url)[1].upper()
-
-3) DB:
-- Add data to MySQL DB (OR to SQLite <- might be better for GitHub?)
-- Also generate a JSON file?
-
-"""
+# TODO: 1) Better error handling, 2) not creating duplicates if scraped twice in one day.
 
 #%%
 import pandas as pd
 import re
 import time
 import datetime
+import sqlite3
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -32,12 +19,12 @@ from selenium.webdriver.support import expected_conditions as EC
 # Function to initialize WebDriver
 def initialize_driver():
     chrome_options = Options()
-    # chrome_options.add_argument("--headless")  # <- <- <- <- <- <- <- <- <- <- <- Uncomment in production <- <- <- <- <- <- <- <- <- <- <-
+    chrome_options.add_argument("--headless")
     driver = webdriver.Chrome(options=chrome_options)
     return driver
 
 # Function to scrape data from the current page
-def scrape_data(driver):
+def scrape_data(driver, language):
     # Extract all table rows on the current page
     table_rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
 
@@ -50,13 +37,20 @@ def scrape_data(driver):
     for row in table_rows:
         columns = row.find_elements(By.TAG_NAME, "td")
         
-        if len(columns) >= 3:  # Make sure the row has enough columns
+        if len(columns) == 3:  # Make sure the row has 3 columns
             troop_school.append(columns[0].text.strip())  # First column: Troop/School
-            start_date.append(columns[1].text.strip())  # Second column: Start date
-            end_date.append(columns[2].text.strip())  # Third column: End date
+
+            start_date_raw = columns[1].text.strip()  # Second column: Start date
+            start_date.append(datetime.datetime.strptime(start_date_raw, "%d.%m.%Y").strftime("%Y-%m-%d"))
+
+            end_date_raw = columns[2].text.strip()  # Third column: End date
+            end_date.append(datetime.datetime.strptime(end_date_raw, "%d.%m.%Y").strftime("%Y-%m-%d"))
+        
+        else:
+            print("Row does not have 3 columns.")
 
     # Return the data as a list of dictionaries
-    return [{"troopSchool": troop, "startDate": start, "endDate": end}
+    return [{"scrapeDate": datetime.date.today().strftime('%Y-%m-%d'), "language": language, "troopSchool": troop, "startDate": start, "endDate": end}
             for troop, start, end in zip(troop_school, start_date, end_date)]
 
 # Function to click the second button (next page button)
@@ -77,9 +71,6 @@ def click_next_button(driver):
                 WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "table tbody tr"))
                 )
-                sleep_time = 3
-                print(f"Page loaded successfully. Sleeping for {sleep_time}")
-                time.sleep(sleep_time)  # Wait before next loop
 
             else:
                 print("Next button is disabled or not clickable.")
@@ -89,7 +80,7 @@ def click_next_button(driver):
         print("Error clicking next button:", e)
 
 # Function to scrape all data across pages
-def scrape_all_data(url):
+def scrape_all_data(url, language):
     driver = initialize_driver()
     driver.get(url)
     wait = WebDriverWait(driver, 10)
@@ -99,14 +90,13 @@ def scrape_all_data(url):
     
     while True:
         try:
-            # Scrape data from the current page
-            page_data = scrape_data(driver)
-            all_data.extend(page_data)  # Append the scraped data to the list
-
-            # Wait for the page to load and for the page span to be visible
+            # Wait for the page to load and for the table body to be visible
             WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "span"))
+                EC.presence_of_element_located((By.CSS_SELECTOR, "table tbody"))
             )
+            # Scrape data from the current page
+            page_data = scrape_data(driver, language)
+            all_data.extend(page_data)  # Append the scraped data to the list
             
             # Get the current page and total pages from the page span text
             page_span = driver.find_element(By.CSS_SELECTOR, "div.my-5.flex.items-center.justify-center span")
@@ -121,12 +111,12 @@ def scrape_all_data(url):
                 print("Could not extract page numbers.")
                 break
             
-            print(f"Current Page: {current_page} / Total Pages: {total_pages}")
+            print(f"Current page: {current_page} / {total_pages}")
             
             # If we're not on the last page, click the "Next" button
             if current_page < total_pages:
                 click_next_button(driver)  # Click the next page button
-                time.sleep(2)  # Wait for the next page to load
+                time.sleep(1)  # Wait for the next page to load
             else:
                 print("Reached the last page.")
                 break
@@ -139,13 +129,53 @@ def scrape_all_data(url):
     return all_data
 
 #%%
-url = "https://www.armee.ch/de/aufgebotsdaten"
-scraped_data = scrape_all_data(url)
+# List to store all scraped data
+scraped_data = []
+
+# Languages and URLs to scrape
+urls = {
+    "DE": "https://www.armee.ch/de/aufgebotsdaten",
+    "FR": "https://www.armee.ch/fr/dates-de-convocation",
+    "IT": "https://www.armee.ch/it/date-di-chiamata-in-servizio"
+    }
+
+# Scraping the data
+for language in urls:
+    try:
+        print(f"Language accessing: {language} | Website link: {urls[language]}")
+        scraped_data.extend(scrape_all_data(urls[language], language))
+    except Exception as e:
+        print(f"Error scraping {language} {urls[language]}: {e}")
 
 # Convert the collected data to a DataFrame
-df = pd.DataFrame(scraped_data)
+scraped_data_df = pd.DataFrame(scraped_data)
 
-# Output the DataFrame
-print(df)
+# Output the DataFrame head
+print("Here are the first 5 rows of the extracted data:")
+print(scraped_data_df.head(5))
 
-# %%
+# Connect to database and append the scraped data
+conn = sqlite3.connect("service_dates.db")
+print("Connected to the database.")
+
+# Transform df to SQL format and add to (new) table (if not exists)
+scraped_data_df.to_sql("serviceDates", conn, if_exists="append", index=False) # or replace if we don't care about historical data
+print("Inserted data into DB.")
+
+print("First row of each language in DB:")
+for language in urls:
+    try:
+        res = conn.execute("""
+                           SELECT * FROM serviceDates
+                           WHERE CAST(scrapeDate AS DATE) = (
+                                    SELECT MAX(CAST(scrapeDate AS DATE)) FROM serviceDates
+                                )
+                                AND language = ?
+                            LIMIT 5
+                           """,(language,)).fetchone()
+        print(res)
+    except Exception as e:
+        print(f"Error querying {language} data: {e}")
+
+conn.close()
+print("Closed DB connection.")
