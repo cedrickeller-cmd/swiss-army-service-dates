@@ -1,6 +1,7 @@
 # custom
 **/.DS_Store
 secret/
+*.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
