@@ -3,6 +3,7 @@
 secret/
 *.db
 *.db.bak
+*.sql
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
