@@ -1,7 +1,7 @@
 #%%
 # Scraper for Swiss Army Service Information
 
-# TODO: 1) Better error handling, 2) not creating duplicates if scraped twice in one day.
+# TODO: 1) Better error handling
 
 #%%
 import pandas as pd
@@ -50,7 +50,7 @@ def scrape_data(driver, language):
             print("Row does not have 3 columns.")
 
     # Return the data as a list of dictionaries
-    return [{"scrapeDate": datetime.date.today().strftime('%Y-%m-%d'), "language": language, "troopSchool": troop, "startDate": start, "endDate": end}
+    return [{"language": language, "troopSchool": troop, "startDate": start, "endDate": end}
             for troop, start, end in zip(troop_school, start_date, end_date)]
 
 # Function to click the second button (next page button)
@@ -149,33 +149,79 @@ for language in urls:
 
 # Convert the collected data to a DataFrame
 scraped_data_df = pd.DataFrame(scraped_data)
+scraped_data_df = scraped_data_df.drop_duplicates()  # Deduplicate (based on all columns) 
+scraped_data_df["scrapeDate"] = datetime.date.today().strftime('%Y-%m-%d')  # Set scrapeDate as today 
+scraped_data_df["active"] = True  # Mark all scraped data as active
 
 # Output the DataFrame head
-print("Here are the first 5 rows of the extracted data:")
-print(scraped_data_df.head(5))
+print("Here is the first row of the extracted data:")
+print(scraped_data_df.head(1))
 
+#%%
 # Connect to database and append the scraped data
 conn = sqlite3.connect("service_dates.db")
 print("Connected to the database.")
 
-# Transform df to SQL format and add to (new) table (if not exists)
-scraped_data_df.to_sql("serviceDates", conn, if_exists="append", index=False) # or replace if we don't care about historical data
-print("Inserted data into DB.")
+# Create the necessary tables if not exist
+conn.execute("""
+CREATE TABLE IF NOT EXISTS serviceDates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    language TEXT NOT NULL,
+    troopSchool TEXT NOT NULL,
+    startDate TEXT,     -- can be NULL if date not yet decided
+    endDate TEXT,       -- can be NULL if date not yet decided
+    scrapeDate TEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(language, troopSchool, startDate, endDate)
+)
+""")
 
+conn.commit()
+
+# Transform df to SQL format and add to activeServiceDates table (creates it if not exists)
+scraped_data_df.to_sql("activeServiceDates", conn, if_exists="replace", index=False)
+print("Inserted new data into activeServiceDates table.")
+
+# Insert new records or update the historical serviceDates table
+conn.execute("""
+INSERT OR REPLACE INTO serviceDates (language, troopSchool, startDate, endDate, scrapeDate, active)
+SELECT language, troopSchool, startDate, endDate, scrapeDate, active
+FROM activeServiceDates
+""")
+
+# "Deactivate" old records in the historical table that are not in activeServiceDates
+conn.execute("""
+UPDATE serviceDates
+SET active = false
+WHERE (language, troopSchool, startDate, endDate) NOT IN (
+    SELECT language, troopSchool, startDate, endDate
+    FROM activeServiceDates
+)
+""")
+print("Inserted and updated historical serviceDates table.")
+
+# Commit changes and close the connection
+conn.commit()
+
+#%%
 print("First row of each language in DB:")
-for language in urls:
-    try:
-        res = conn.execute("""
-                           SELECT * FROM serviceDates
-                           WHERE CAST(scrapeDate AS DATE) = (
-                                    SELECT MAX(CAST(scrapeDate AS DATE)) FROM serviceDates
-                                )
-                                AND language = ?
-                            LIMIT 5
-                           """,(language,)).fetchone()
-        print(res)
-    except Exception as e:
-        print(f"Error querying {language} data: {e}")
+tables = ["activeServiceDates", "serviceDates"]
+for table in tables:
+    for language in urls:
+        try:
+            res = conn.execute(f"""
+                            SELECT * FROM {table}  -- can't parameterize table names with `?`
+                            WHERE CAST(scrapeDate AS DATE) = (
+                                        SELECT MAX(CAST(scrapeDate AS DATE)) FROM serviceDates
+                                    )
+                                    AND language = ?
+                                LIMIT 1
+                            """,(language,)).fetchone()
+            print(res)
+        except Exception as e:
+            print(f"Error querying {language} data: {e}")
 
 conn.close()
 print("Closed DB connection.")
+
+# %%
