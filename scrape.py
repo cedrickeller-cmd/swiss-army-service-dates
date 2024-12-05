@@ -1,7 +1,7 @@
 #%%
 # Scraper for Swiss Army Service Information
 
-# TODO: 1) Better error handling, 2) logging instead of printing
+# TODO: 1) Better error handling
 
 #%%
 import pandas as pd
@@ -9,11 +9,20 @@ import re
 import datetime
 import sqlite3
 import json
+import logging
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="scraper.log",  # Log file
+    filemode="a"  # Append to the log file
+)
 
 #%%
 # Function to initialize WebDriver
@@ -48,7 +57,7 @@ def scrape_data(driver, language):
             end_date.append(datetime.datetime.strptime(end_date_raw, "%d.%m.%Y").strftime("%Y-%m-%d"))
         
         else:
-            print("Row does not have 3 columns.")
+            logging.warning("Row does not have 3 columns.")
 
     # Return the data as a list of dictionaries
     return [{"language": language, "troopSchool": troop, "startDate": start, "endDate": end}
@@ -66,7 +75,7 @@ def click_next_button(driver):
             next_button_class = next_button.get_attribute('class') or ''
             if 'cursor-not-allowed' not in next_button_class:  # if not disabled
                 next_button.click()
-                print("Clicked next page button.")
+                logging.info("Clicked next page button.")
                 
                 # Wait for the page to load the table element (should be what's changing)
                 WebDriverWait(driver, 10).until(
@@ -74,11 +83,11 @@ def click_next_button(driver):
                 )
 
             else:
-                print("Next button is disabled or not clickable.")
+                logging.info("Next button is disabled or not clickable.")
         else:
-            print("Second button not found.")
+            logging.warning("Second button not found.")
     except Exception as e:
-        print("Error clicking next button:", e)
+        logging.error(f"Error clicking next button: {e}")
 
 # Function to scrape all data across pages
 def scrape_all_data(url, language, headless=True):
@@ -112,23 +121,23 @@ def scrape_all_data(url, language, headless=True):
                     current_page = int(match.group(1))
                     total_pages = int(match.group(2))
                 else:
-                    print("Could not extract page numbers.")
+                    logging.warning("Could not extract page numbers.")
                     break
                 
-                print(f"Current page: {current_page} / {total_pages}")
+                logging.info(f"Current page: {current_page} / {total_pages}")
                 
                 # If we're not on the last page, click the "Next" button
                 if current_page < total_pages:
                     click_next_button(driver)  # Click the next page button
                 else:
-                    print("Reached the last page.")
+                    logging.info("Reached the last page.")
                     break
             
             except Exception as e:
-                print("Error navigating or scraping:", e)
+                logging.error(f"Error navigating or scraping: {e}")
                 break
     except Exception as e:
-        print(f"Error during scraping: {e}")
+        logging.error(f"Error during scraping: {e}")
     finally:
         driver.quit()
 
@@ -181,16 +190,16 @@ def update_database(data):
     # Commit changes and close the connection
     conn.commit()
     conn.close()
-    print("Database updated successfully.")
+    logging.info("Database updated successfully.")
 
 # Function to save data to a JSON file
 def save_data_to_json(data, filename="latest_service_dates.json"):
     try:
         with open(filename, "w", encoding="utf-8") as json_file:
             json.dump(data, json_file, indent=4, ensure_ascii=False)  # ensure_ascii=False to keep it human-readable
-        print(f"Data successfully saved to {filename}.")
+        logging.info(f"Data successfully saved to {filename}.")
     except Exception as e:
-        print(f"Error saving data to JSON: {e}")
+        logging.error(f"Error saving data to JSON: {e}")
 
 # Function to start scraping, updating the database, and optionally save data as JSON file
 def run_scraper(save_as_json=False, json_filename="latest_service_dates.json", hide_scraping_browser=True):
@@ -207,10 +216,10 @@ def run_scraper(save_as_json=False, json_filename="latest_service_dates.json", h
         # Scraping the data
         for language, url in urls.items():
             try:
-                print(f"Scraping data for {language}...")
+                logging.info(f"Scraping data for {language}...")
                 all_scraped_data.extend(scrape_all_data(url, language, headless=hide_scraping_browser))
             except Exception as e:
-                print(f"Error scraping {language} ({url}):\n{e}")
+                logging.error(f"Error scraping {language} ({url}): {e}")
 
         # Updating the database
         if all_scraped_data: # if not empty
@@ -220,13 +229,28 @@ def run_scraper(save_as_json=False, json_filename="latest_service_dates.json", h
             # Save data to JSON if requested (if True)
             if save_as_json:
                 save_data_to_json(all_scraped_data, filename=json_filename)
+            
+            logging.info("Scraper completed successfully.")
+            return {"status": "success", "message": "Scraping and database update completed successfully."}
+
         else:
-            print("No data scraped. Skipped database and JSON update.")
-    
+            logging.warning("No data scraped. Skipped database and JSON update.")
+            return {"status": "warning", "message": "Scraper ran but no data was found."}
+
     except Exception as e:
-        print(f"An error occurred while running the scraper: {e}")
+        logging.error(f"An error occurred while running the scraper: {e}")
+        return {"status": "error", "message": f"An error occurred: {e}"}
 
 #%%
 # Make script importable and callable
 if __name__ == "__main__":
-    run_scraper(save_as_json=True, hide_scraping_browser=False)  # args when script runs on its own
+    result = run_scraper(save_as_json=True, hide_scraping_browser=False)  # args when script runs on its own
+    if result["status"] == "error":
+        logging.error(f"Scraper failed: {result['message']}")
+        print("ERROR:", result["message"])  # This could be replaced by a call to send a message to the frontend.
+    elif result["status"] == "warning":
+        logging.warning(result["message"])
+        print("WARNING:", result["message"])
+    else:
+        logging.info(result["message"])
+        print("SUCCESS:", result["message"])
