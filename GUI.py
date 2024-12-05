@@ -1,7 +1,7 @@
 #%%
 # GUI for Swiss Army Service Information
 
-# TODO: 1) Insanely slow at the moment but not sure if it's just my machine 2) cleanup
+# TODO: 1) Insanely slow at the moment but not sure if it's just my machine 2) cleanup of the code
 
 #%%
 from scrape import run_scraper
@@ -16,7 +16,6 @@ import pandas as pd
 import datetime
 
 import threading
-
 #%%
 # Database connection function
 def get_filtered_data(filters):
@@ -74,7 +73,6 @@ def get_filtered_data(filters):
 
     return df
 
-#%%
 # Function to populate Treeview
 def populate_treeview(tree, df):
     # Clear tree
@@ -98,7 +96,7 @@ def update_table():
     }
 
 # Run database fetching in a separate thread
-    threading.Thread(target=fetch_and_update, args=(filters,)).start()
+    threading.Thread(target=fetch_and_update, args=(filters,), daemon=True).start()
 
 def fetch_and_update(filters):
     filtered_data = get_filtered_data(filters)
@@ -226,6 +224,7 @@ def run_scraper_and_update():
         print(error_message)
         messagebox.showerror("ERROR:", error_message)
 
+#%%
 # Initialize the GUI
 root = tk.Tk()
 root.title("Service Dates Filter")
@@ -278,7 +277,7 @@ frame_table = tk.Frame(root)
 frame_table.pack(fill="both", expand=True)
 
 # Treeview for displaying the data
-columns = ["language", "troopSchool", "startDate", "endDate"]
+columns = ["Language", "Troop / School", "Start Date", "End Date"]
 tree = ttk.Treeview(frame_table, columns=columns, show="headings", height=15)
 
 # Define column headers
