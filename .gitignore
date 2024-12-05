@@ -4,6 +4,7 @@ secret/
 *.db
 *.db.bak
 *.sql
+*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
