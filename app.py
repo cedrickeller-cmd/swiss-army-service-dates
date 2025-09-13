@@ -17,6 +17,10 @@ def load_data():
 st.set_page_config(page_title="Swiss Army Service Dates", layout="wide")
 st.title("Swiss Army Service Dates Lookup")
 
+# Last updated info and data source caption
+last_updated = pd.to_datetime(load_data()["scrapeDate"]).max().strftime('%a, %d %b %Y')
+st.caption(f"**Last Updated:** {last_updated} |  **Data Sources:** [Schweizer Armee](https://www.armee.ch/de/aufgebotsdaten), [Armée Suisse](https://www.armee.ch/fr/dates-de-convocation), &amp; [Esercito Svizzero](https://www.armee.ch/it/date-di-chiamata-in-servizio)")
+
 # Load data
 df = load_data()
 
@@ -138,6 +142,40 @@ else:
 
     # Show results
     st.subheader("Filtered Service Dates")
+    st.caption("**Tip:** Click on column headers to sort. Use the sidebar to adjust filters. Download the data using the menu in the top-right corner of the table.")
     st.dataframe(filtered_df, use_container_width=True)
 
 st.write(f"Records: {len(filtered_df)}/{len(df)}")
+
+# Add some vertical space
+st.write("")
+st.write("")
+
+# Create footer
+footer = """
+<style>
+.footer {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background-color: #262730;
+    color: white; /* text color */
+    padding: 10px;
+    text-align: center;
+    font-size: 0.8em;
+}
+.footer a {
+    color: #ff4b4b;  /* primary red of streamlit theme for links */
+    text-decoration: none;  /* Remove underline */
+}
+.footer a:hover {
+    color: #e54343;  /* Darker red on hover */
+    text-decoration: underline;  /* Add underline on hover */
+}
+</style>
+<div class="footer">
+    Developed with ❤️ by <a href="https://www.cedrickeller.ch/">C&eacutedric</a>
+</div>
+"""
+st.markdown(footer, unsafe_allow_html=True)
