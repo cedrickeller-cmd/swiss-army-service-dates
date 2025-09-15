@@ -19,64 +19,33 @@ Reasoning: If one can’t do their service requirement with their battalion, it�
 
 ## Implementation Plan
 
-This project will develop in phases as skills improve.
-Phases 1-3 are required to be completed for a local prototype.
-
 ### Basic Setup
 
 - Version Control: Git
 - Remote Repo: GitHub
+- Hosting: VPS
 
-### Phase 1: Scraper and Cleaning
+### Scraper and Cleaning
 
-The data needs to be scraped from [armee.ch](https://www.armee.ch/de/aufgebotsdaten) using Python with Selenium to navigate the table pages.
-The data will be checked and cleaned using Pandas.
+The data is scraped from [armee.ch](https://www.armee.ch/) using Python with Selenium to navigate the table pages. All languages are considered by scraping the data from multiple sources: [German](https://www.armee.ch/de/aufgebotsdaten), [French](https://www.armee.ch/fr/dates-de-convocation), and [Italian](https://www.armee.ch/it/date-di-chiamata-in-servizio)
+The data is checked and cleaned using Pandas.
 
-### Phase 2: Database and Queries
+### Database and Queries
 
-A local database (MySQL or SQLite) will initially store the scraped data.
-The data should have the following columns:
-id, scrapeDate, language, troopType, troopSchool, startDate, endDate, active
+A SQLite database stores the scraped data.
+The data contains the following columns:
+id, scrapeDate, language, troopSchool, startDate, endDate, active
 
-For the start, there will be a table for the latest (active) data, and a table for historical data with an active status (1 = included in latest scrape, 0 = not on website anymore).
+There is a table for the latest (active) data, and a table for historical data with an active status (1 = included in latest scrape, 0 = not on website anymore). `troopType` may be added in the future if `troopSchool` is grouped meaningfully.
 
-### Phase 3: Local UI
+### GUI
 
 GUI to filter data and return queries as a table.
 
-Filters should include language (single choice), troopSchool (%LIKE%), startDate (>=), and endDate (<=).
-Data for the troopType is not included at this stage, so we don't need to display or filter it yet.
+Filters should include language (single choice), troopSchool (%LIKE%), startDate (>=), and endDate (<=). Streamlit components easily filter the cached active table.
 
-The data should either be scraped in a set interval, or the user should be able to scrape it by clicking a button at this stage of the project.
+### Scheduled Scraping, Updates, and Backups
 
----
-> **The below phases need more thought and development**
+Cron jobs are used for scheduled scraping once a day.
 
-### Phase 4: Scheduled Updates and Backups
-
-Option 1: Export and compress the existing data before scheduled scraping, then truncate and
-insert the new data in the table.
-Option 2: Create a backup table with the data before scheduled and move the existing data
-before truncating and inserting the new data in the live table.
-
-### Phase 5: Moving to the Web
-
-- Option 1: GitHub hosted
-Export the data as a JSON file, host it on GitHub, and build a site using GitHub Pages or
-Vercel (would be completely free) to filter the data and display it as a table.
-- Option 2: Self-hosted
-- 5.1: Remote DB
-I have a web server and can likely use it for a MariaDB at no additional cost.
-- 5.2: Back-end Web Framework
-Flask (might be a bit easier) / Django (more interesting for future projects).
-- 5.3: Front-end
-Static HTML --> HTML and JavaScript for dynamic results.
-
-### Phase 6: Add Multi-Language Support
-
-The data should be available in [German](https://www.armee.ch/de/aufgebotsdaten), [French](https://www.armee.ch/fr/dates-de-convocation), and [Italian](https://www.armee.ch/it/date-di-chiamata-in-servizio).
-
-### Phase 7: Assign troopType
-
-Allows an additional filtering option. This must be assigned manually if common patterns aren’t found.
-Those not assigned to a troopType can tentatively be assigned to "Unknown".
+Updates are pushed to Github and the VPS using Github Actions. Similarily, backups in the form of flat files are created.
