@@ -27,14 +27,15 @@ df = load_data()
 # Sidebar filters
 st.sidebar.header("Filters")
 
-languages = st.sidebar.multiselect(
+# Language filter (single select to hide duplicates)
+language = st.sidebar.selectbox(
     "Language",
     options=sorted(df["language"].unique()),
-    default=sorted(df["language"].unique())
+    index=0  # Default to first language
 )
 
 # Apply language filter to the DataFrame
-filtered_by_language = df[df["language"].isin(languages)]
+filtered_by_language = df[df["language"] == language]
 
 # Date filters
 min_date, max_date = pd.to_datetime(df["startDate"].dropna()).min(), pd.to_datetime(df["endDate"].dropna()).max()
@@ -145,7 +146,7 @@ else:
     st.caption("**Tip:** Click on column headers to sort. Use the sidebar to adjust filters. Download the data using the menu in the top-right corner of the table.")
     st.dataframe(filtered_df, use_container_width=True)
 
-st.write(f"Records: {len(filtered_df)}/{len(df)}")
+st.write(f"Records: {len(filtered_df)}/{len(filtered_by_language)}")
 
 # Add some vertical space
 st.write("")
