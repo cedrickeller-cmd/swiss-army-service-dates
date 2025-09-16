@@ -24,12 +24,31 @@ logging.basicConfig(
     filemode="a"  # Append to the log file
 )
 
+# Today's date for scrapeDate field and JSON filename
+today_date = datetime.date.today().strftime('%Y-%m-%d')
+
 #%%
 # Function to initialize WebDriver
 def initialize_driver(headless=True):
     chrome_options = Options()
     if headless:
         chrome_options.add_argument("--headless")
+    
+    # Working options from successful test (but keep JavaScript enabled)
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--allow-running-insecure-content")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")  # Keep this - images aren't needed for scraping
+    chrome_options.add_argument("--single-process")
+    chrome_options.add_argument("--no-zygote")
+        
+    # Don't specify user-data-dir - let Chrome handle it
+    chrome_options.binary_location = "/usr/bin/chromium"
+    
     driver = webdriver.Chrome(options=chrome_options)
     return driver
 
@@ -66,6 +85,10 @@ def scrape_data(driver, language):
 # Function to click the second button (next page button)
 def click_next_button(driver):
     try:
+        # Get current page number before clicking
+        page_span = driver.find_element(By.CSS_SELECTOR, "div.my-5.flex.items-center.justify-center span")
+        current_page_text = page_span.text
+
         # Find all buttons in the parent div
         buttons = driver.find_elements(By.CSS_SELECTOR, "div.my-5.flex.items-center.justify-center button")
         
@@ -77,10 +100,14 @@ def click_next_button(driver):
                 next_button.click()
                 logging.info("Clicked next page button.")
                 
-                # Wait for the page to load the table element (should be what's changing)
+                # Wait for page number to change (not just table to load)
                 WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "table tbody tr"))
+                    lambda driver: (
+                        driver.find_element(By.CSS_SELECTOR, "div.my-5.flex.items-center.justify-center span")
+                        .text != current_page_text
+                    )
                 )
+
 
             else:
                 logging.info("Next button is disabled or not clickable.")
@@ -90,18 +117,19 @@ def click_next_button(driver):
         logging.error(f"Error clicking next button: {e}")
 
 # Function to scrape all data across pages
-def scrape_all_data(url, language, headless=True):
+def scrape_all_data(url, language, headless=True, max_pages=200): # limit to 200 pages to avoid infinite loops
     driver = initialize_driver(headless=headless)
     driver.get(url)
 
     all_data = []  # Initialize list to store scraped data
+    pages_scraped = 0
 
     try:
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
         
-        while True:
+        while pages_scraped < max_pages:
             try:
                 # Wait for the page to load and for the table body to be visible
                 WebDriverWait(driver, 10).until(
@@ -164,7 +192,7 @@ def update_database(data):
     # Conversion to df
     df = pd.DataFrame(data)
     df = df.drop_duplicates()  # Deduplicate (based on all columns)
-    df["scrapeDate"] = datetime.date.today().strftime('%Y-%m-%d')  # Set scrapeDate as today
+    df["scrapeDate"] = today_date  # Set scrapeDate as today
     df["active"] = True  # Mark all scraped data as active
 
     # Transform df to SQL format and add to activeServiceDates table (creates it if not exists)
@@ -193,7 +221,7 @@ def update_database(data):
     logging.info("Database updated successfully.")
 
 # Function to save data to a JSON file
-def save_data_to_json(data, filename="latest_service_dates.json"):
+def save_data_to_json(data, filename=f"latest_service_dates{today_date}.json"):
     try:
         with open(filename, "w", encoding="utf-8") as json_file:
             json.dump(data, json_file, indent=4, ensure_ascii=False)  # ensure_ascii=False to keep it human-readable
@@ -202,7 +230,7 @@ def save_data_to_json(data, filename="latest_service_dates.json"):
         logging.error(f"Error saving data to JSON: {e}")
 
 # Function to start scraping, updating the database, and optionally save data as JSON file
-def run_scraper(save_as_json=False, json_filename="latest_service_dates.json", hide_scraping_browser=True):
+def run_scraper(save_as_json=False, json_filename=f"latest_service_dates{today_date}.json", hide_scraping_browser=True):
     # Languages and URLs to scrape
     urls = {
         "DE": "https://www.armee.ch/de/aufgebotsdaten",
