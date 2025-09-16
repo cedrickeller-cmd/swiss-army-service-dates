@@ -8,10 +8,15 @@ DB_PATH = "service_dates.db"
 # Helper to load data from DB
 @st.cache_data
 def load_data():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM activeServiceDates", conn)
-    conn.close()
-    return df
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql("SELECT * FROM activeServiceDates", conn)
+        conn.close()
+        return df
+    except (sqlite3.OperationalError, pd.errors.DatabaseError) as e:
+        # Database or table doesn't exist yet
+        st.warning("No data available yet. Please run the scraper first to populate the database.")
+        return pd.DataFrame(columns=["language", "troopSchool", "startDate", "endDate", "scrapeDate"])
 
 # App layout
 st.set_page_config(page_title="Swiss Army Service Dates", layout="wide")
