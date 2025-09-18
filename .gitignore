@@ -1,6 +1,9 @@
 # custom
 **/.DS_Store
 secret/
+data/
+logs/
+json_exports/
 *.db
 *.db.bak
 *.sql

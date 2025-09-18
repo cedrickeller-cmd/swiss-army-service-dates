@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create directory for database and logs
-RUN mkdir -p /app/data /app/logs
+RUN mkdir -p /app/data /app/logs /app/json_exports
 
 # Set ownership and permissions for the app user
 RUN chown -R appuser:appuser /app
