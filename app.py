@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-DB_PATH = "service_dates.db"
+DB_PATH = "data/service_dates.db"
 
 # Helper to load data from DB
 @st.cache_data
@@ -22,12 +22,12 @@ def load_data():
 st.set_page_config(page_title="Swiss Army Service Dates", layout="wide")
 st.title("Swiss Army Service Dates Lookup")
 
-# Last updated info and data source caption
-last_updated = pd.to_datetime(load_data()["scrapeDate"]).max().strftime('%a, %d %b %Y')
-st.caption(f"**Last Updated:** {last_updated} |  **Data Sources:** [Schweizer Armee](https://www.armee.ch/de/aufgebotsdaten), [Armée Suisse](https://www.armee.ch/fr/dates-de-convocation), &amp; [Esercito Svizzero](https://www.armee.ch/it/date-di-chiamata-in-servizio)")
-
 # Load data
 df = load_data()
+
+# Last updated info and data source caption
+last_updated = pd.to_datetime(df["scrapeDate"]).max().strftime('%a, %d %b %Y')
+st.caption(f"**Last Updated:** {last_updated} |  **Data Sources:** [Schweizer Armee](https://www.armee.ch/de/aufgebotsdaten), [Armée Suisse](https://www.armee.ch/fr/dates-de-convocation), &amp; [Esercito Svizzero](https://www.armee.ch/it/date-di-chiamata-in-servizio)")
 
 # Sidebar filters
 st.sidebar.header("Filters")
@@ -36,48 +36,53 @@ st.sidebar.header("Filters")
 language = st.sidebar.selectbox(
     "Language",
     options=sorted(df["language"].unique()),
-    index=0  # Default to first language
+    index=0,  # Default to first language
+    help="Select the language of the displayed Troop/School names"
 )
 
 # Apply language filter to the DataFrame
 filtered_by_language = df[df["language"] == language]
 
-# Date filters
-min_date, max_date = pd.to_datetime(df["startDate"].dropna()).min(), pd.to_datetime(df["endDate"].dropna()).max()
-default_date_range = (min_date, max_date)
+# Date filters - Initialize session state for clearable date inputs
+if 'date_start' not in st.session_state:
+    st.session_state.date_start = None
+if 'date_end' not in st.session_state:
+    st.session_state.date_end = None
 
-# Initialize date range in session state if not exists
-if 'date_range' not in st.session_state:
-    st.session_state.date_range = default_date_range
+# Create two columns for start and end date
+col1, col2 = st.sidebar.columns(2)
 
-# Date input
-date_range = st.sidebar.date_input(
-    "Date Range",
-    value=st.session_state.date_range,
-    min_value=min_date,
-    max_value=max_date
-)
+with col1:
+    date_start = st.date_input(
+        "Start Date",
+        format="YYYY-MM-DD",
+        value=None,
+        key="date_start",
+        help="Leave empty for no lower date limit"
+    )
 
-# Check if date_range is complete before filtering
-try:
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        filter_start, filter_end = date_range
-        # Apply filters
-        filtered_df = filtered_by_language.copy()
-        filtered_df["startDate"] = pd.to_datetime(filtered_df["startDate"], errors="coerce")
-        filtered_df["endDate"] = pd.to_datetime(filtered_df["endDate"], errors="coerce")
-        filtered_df = filtered_df[
-            (filtered_df["startDate"] >= pd.to_datetime(filter_start)) & 
-            (filtered_df["endDate"] <= pd.to_datetime(filter_end))
-        ]
-    else:
-        st.sidebar.warning("Please select both start and end dates")
-        filter_start, filter_end = default_date_range
-        filtered_df = filtered_by_language.copy()
-except ValueError:
-    # Silently handle the ValueError
-    filter_start, filter_end = default_date_range
-    filtered_df = filtered_by_language.copy()
+with col2:
+    date_end = st.date_input(
+        "End Date",
+        value=None,
+        key="date_end", 
+        help="Leave empty for no upper date limit"
+    )
+
+# Apply date filtering based on selected values
+filtered_df = filtered_by_language.copy()
+
+# Convert date columns to datetime first
+filtered_df["startDate"] = pd.to_datetime(filtered_df["startDate"], errors="coerce")
+filtered_df["endDate"] = pd.to_datetime(filtered_df["endDate"], errors="coerce")
+
+# Apply start date filter only if a date is selected
+if date_start is not None:
+    filtered_df = filtered_df[filtered_df["startDate"] >= pd.to_datetime(date_start)]
+
+# Apply end date filter only if a date is selected  
+if date_end is not None:
+    filtered_df = filtered_df[filtered_df["endDate"] <= pd.to_datetime(date_end)]
 
 # Apply language filter to get available troops (without date filter)
 available_troops = sorted(filtered_by_language["troopSchool"].unique())
@@ -100,12 +105,9 @@ options_with_select_all = ["Select All"] + available_troops
 troops = st.sidebar.multiselect(
     "Troop/School",
     options=options_with_select_all,
-    default=st.session_state.troops
+    default=st.session_state.troops,
+    help="Select one or more Troops/Schools. Use 'Select All' to select all options."
 )
-#  dropdown becomes buggy with the session state -- when clicking a second option, it closes the dropdown and does only apply the first option
-#  however, now it resets to "Select All" when i change the language filter or the date range
-#  # Update session state
-#  st.session_state.troops = troops
 
 # Handle "Select All" logic
 if "Select All" in troops:
@@ -113,19 +115,8 @@ if "Select All" in troops:
 else:
     troops = [t for t in troops if t != "Select All"]
 
-# Apply all filters to the final display DataFrame
-filtered_df = filtered_by_language.copy()
-
-# 1. Apply troop filter
+# Apply troop filter to the already date-filtered DataFrame
 filtered_df = filtered_df[filtered_df["troopSchool"].isin(troops)]
-
-# 2. Apply date filter using the validated dates
-filtered_df["startDate"] = pd.to_datetime(filtered_df["startDate"], errors="coerce")
-filtered_df["endDate"] = pd.to_datetime(filtered_df["endDate"], errors="coerce")
-filtered_df = filtered_df[
-    (filtered_df["startDate"] >= pd.to_datetime(filter_start)) & 
-    (filtered_df["endDate"] <= pd.to_datetime(filter_end))
-]
 
 # Check if the filtered DataFrame is empty
 if filtered_df.empty:
@@ -149,7 +140,7 @@ else:
     # Show results
     st.subheader("Filtered Service Dates")
     st.caption("**Tip:** Click on column headers to sort. Use the sidebar to adjust filters. Download the data using the menu in the top-right corner of the table.")
-    st.dataframe(filtered_df, use_container_width=True)
+    st.dataframe(filtered_df, width="stretch")
 
 st.write(f"Records: {len(filtered_df)}/{len(filtered_by_language)}")
 
