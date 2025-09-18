@@ -8,6 +8,7 @@ import datetime
 import sqlite3
 import json
 import logging
+import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -15,10 +16,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # Configure logging
+log_file = os.path.join("logs", "scraper.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    filename="scraper.log",  # Log file
+    filename=log_file,
     filemode="a"  # Append to the log file
 )
 
@@ -317,7 +319,7 @@ def scrape_all_data(url, language, headless=True, max_pages=200, show_progress=T
 # Function to insert into and update database
 def update_database(data):
     # Connect to database
-    conn = sqlite3.connect("service_dates.db") # creates DB if it doesn't exist
+    conn = sqlite3.connect("data/service_dates.db") # creates DB if it doesn't exist
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS serviceDates (
@@ -364,16 +366,19 @@ def update_database(data):
     logging.info("Database updated successfully.")
 
 # Function to save data to a JSON file
-def save_data_to_json(data, filename=f"latest_service_dates{today_date}.json"):
+def save_data_to_json(data, filename=f"latest_service_dates_{today_date}.json"):
     try:
-        with open(filename, "w", encoding="utf-8") as json_file:
+        # Files will be saved in the json_exports folder (created in Dockerfile)
+        filepath = os.path.join("json_exports", filename)
+        
+        with open(filepath, "w", encoding="utf-8") as json_file:
             json.dump(data, json_file, indent=4, ensure_ascii=False)  # ensure_ascii=False to keep it human-readable
-        logging.info(f"Data successfully saved to {filename}.")
+        logging.info(f"Data successfully saved to {filepath}.")
     except Exception as e:
         logging.error(f"Error saving data to JSON: {e}")
 
 # Function to start scraping, updating the database, and optionally save data as JSON file
-def run_scraper(save_as_json=False, json_filename=f"latest_service_dates{today_date}.json", 
+def run_scraper(save_as_json=False, json_filename=f"latest_service_dates_{today_date}.json", 
                 hide_scraping_browser=True, max_pages=200, show_progress=True):
     """
     Run the scraper with configurable page limits.
