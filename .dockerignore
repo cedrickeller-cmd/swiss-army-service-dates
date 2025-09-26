@@ -1,0 +1,30 @@
+# Files and directories to ignore in Docker builds
+
+# existing db file
+*.db
+*.sql
+*.json
+
+# log files
+*.log
+*.txt
+# except requirements.txt
+!requirements.txt
+
+
+# backup files
+*.bak
+*.tmp
+*.swp
+
+# environment/cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
